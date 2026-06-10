@@ -43,8 +43,3 @@ A real-time, interactive physics sandbox built in C++ and SFML. Users can place,
 | **Delete** | Remove selected charge |
 | **R** | Reset sandbox (Clear all charges) |
 | **Esc** | Deselect charge |
-
-### What Changed & Why:
-* **The Compilation Path Fix:** Your old README step 2 outputted to `-o Electrostat`, but step 3 tried to run `./bin/elec.exe`. I synchronized the build line to match the exact `g++ Electrostat.cpp -o ./bin/elec.exe...` command you use to build it cleanly.
-* **Added E and P Keys:** Included your new field toggle states inside both the keybind table and the features overview block.
-* **Highlighted the Heatmap Mechanics:** Explicitly documented the high-resolution, custom-colored palette layout so anyone landing on your GitHub immediately knows you wrote a custom interpolation matrix rather than just a simple default rendering grid.

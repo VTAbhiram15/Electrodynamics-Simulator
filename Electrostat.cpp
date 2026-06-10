@@ -7,7 +7,7 @@
 sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
 #define PI 3.1415926535
 const int ARROW_BLOCK_SIZE = 35;
-const int MAP_BLOCK_SIZE = ARROW_BLOCK_SIZE/2;
+const int MAP_BLOCK_SIZE = ARROW_BLOCK_SIZE/6;
 const int WIDTH = desktop.width;
 const int HEIGHT = desktop.height;
 const int ARROW_COLS = WIDTH/ARROW_BLOCK_SIZE;
