@@ -4,6 +4,10 @@ A real-time, interactive physics sandbox built in C++ and SFML. Users can place,
 
 ## Features
 * **Interactive Sandbox**: Left-click to spawn and drag positive charges; Right-click for negative charges.
+* **Dual-Field Visualization**: 
+    * **Vector Field**: Real-time electric field arrows scaled and colored dynamically by local intensity.
+    * **Scalar Field**: A high-resolution, smoothly interpolated potential map ($V = \frac{q}{r}$) featuring a non-linear gradient mapping from Crimson Red (+ve) through Slate Gray (neutral) to Cobalt Blue (-ve).
+* **Singularity Protection**: Built-in distance clamping to prevent mathematical division-by-zero crashes near charge centers.
 * **Physics Engine**: Calculates real-time electrostatic forces using $F = ma$ and supports particle collisions with energy damping.
 * **Dynamic Control**:
     * **Scroll Wheel**: Adjust the magnitude ($q$) of the selected charge.
@@ -26,14 +30,21 @@ A real-time, interactive physics sandbox built in C++ and SFML. Users can place,
     ```bash
     ./bin/elec.exe
 
-## Controls Reference
+## Controls Reference   
 | Key / Action | Function |
 | :--- | :--- |
 | **Left Click** | Select / Drag / Spawn positive charge |
 | **Right Click** | Spawn negative charge |
 | **Scroll Wheel** | Modify charge magnitude ($q$) |
 | **Spacebar** | Toggle simulation (Pause / Play) |
+| **E** |	Switch view to Electric Field Vector Grid
+| **P** |	Switch view to High-Res Potential Map Heatmap
 | **M / N** | Increase / Decrease mass |
 | **Delete** | Remove selected charge |
 | **R** | Reset sandbox (Clear all charges) |
 | **Esc** | Deselect charge |
+
+### What Changed & Why:
+* **The Compilation Path Fix:** Your old README step 2 outputted to `-o Electrostat`, but step 3 tried to run `./bin/elec.exe`. I synchronized the build line to match the exact `g++ Electrostat.cpp -o ./bin/elec.exe...` command you use to build it cleanly.
+* **Added E and P Keys:** Included your new field toggle states inside both the keybind table and the features overview block.
+* **Highlighted the Heatmap Mechanics:** Explicitly documented the high-resolution, custom-colored palette layout so anyone landing on your GitHub immediately knows you wrote a custom interpolation matrix rather than just a simple default rendering grid.
