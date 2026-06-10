@@ -7,7 +7,7 @@
 sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
 #define PI 3.1415926535
 const int ARROW_BLOCK_SIZE = 35;
-const int MAP_BLOCK_SIZE = ARROW_BLOCK_SIZE/6;
+const int MAP_BLOCK_SIZE = ARROW_BLOCK_SIZE/2;
 const int WIDTH = desktop.width;
 const int HEIGHT = desktop.height;
 const int ARROW_COLS = WIDTH/ARROW_BLOCK_SIZE;
@@ -147,11 +147,11 @@ void drawFieldArrows(float& arrow_len, float& scale_factor, SimulationInit& sim)
 }
 sf::Color getPotentialColor(const float total_V) {
     // 1. Calculate the raw ratio and clamp it strictly between -1.0 and 1.0
-    float ratio = total_V / MAX_POT_BRIGHTNESS;
-    ratio = std::max(-1.0f, std::min(1.0f, ratio));
+    float strength = total_V / MAX_POT_BRIGHTNESS;
+    strength = std::max(-1.0f, std::min(1.0f, strength));
 
-    float sign = (ratio >= 0.0f) ? 1.0f : -1.0f;
-    float strength = sign * std::sqrt(std::abs(ratio));
+    // float sign = (ratio >= 0.0f) ? 1.0f : -1.0f;
+    // float strength = sign * (std::abs(ratio));
 
     // Negative (#2535AA) -> Neutral (#4B4A4F) -> Positive (#C32727)
     sf::Uint8 negR = 205,  negG = 120,  negB = 120;  // Cobalt Blue
@@ -162,7 +162,7 @@ sf::Color getPotentialColor(const float total_V) {
 
     if (strength > 0.0f) {
         // Positive Branch: Blend from Neutral (t=0) to Positive (t=1)
-        float t = strength; 
+        float t = (strength); 
         finalR = neuR + static_cast<sf::Uint8>((posR - neuR) * t);
         finalG = neuG + static_cast<sf::Uint8>((posG - neuG) * t);
         finalB = neuB + static_cast<sf::Uint8>((posB - neuB) * t);
@@ -305,7 +305,7 @@ void updateFieldArrows(SimulationInit& sim){
         }
     }
 }
-void updatePotentialMap(SimulationInit& sim){
+void updatePotentialMapScreen(SimulationInit& sim){
     for(size_t i=0; i<MAP_ROWS; i++){
         for(size_t j=0; j<MAP_COLS; j++){
             int index = i*MAP_COLS + j;
@@ -335,6 +335,8 @@ int main(){
     float arrow_len = 16.f;
     float scale_factor = 5.f;
     bool isSimRunning = false;
+    bool updateElectricField = true;
+    bool updatePotentialMap = false;
     bool displayElectricField = true;
     bool displayPotentialMap = false;
     
@@ -371,6 +373,7 @@ int main(){
                         new_charge.q = 5000.f;
                         new_charge.mass = 1.f;
                         sim.charges.push_back(new_charge);
+                        updateElectricField = updatePotentialMap = true;
                     }
 
                 }
@@ -394,6 +397,7 @@ int main(){
                         new_charge.q = -5000.f;
                         new_charge.mass = 1.f;
                         sim.charges.push_back(new_charge);
+                        updateElectricField = updatePotentialMap = true;
                     }                  
                 }
 
@@ -407,20 +411,24 @@ int main(){
                     else if(delta < 0.f){
                         sim.charges[selectedIdx].q -= (-delta)*(500.f);                      
                     }
+                    updateElectricField = updatePotentialMap = true;
                 }
             }
             if(event.type == sf::Event::KeyPressed && selectedIdx != -1){
                 if(event.key.code == sf::Keyboard::M){
                     sim.charges[selectedIdx].mass += 2.f;
+                    updateElectricField = updatePotentialMap = true;
                     std::cout << "mass = " << sim.charges[selectedIdx].mass << std::endl;            
                 }
                 if(event.key.code == sf::Keyboard::N){
                     if(sim.charges[selectedIdx].mass > 0) sim.charges[selectedIdx].mass -= 2.f;
                     else if(sim.charges[selectedIdx].mass <=0) sim.charges[selectedIdx].mass = 0.f;
+                    updateElectricField = updatePotentialMap = true;
                     std::cout << "mass = " << sim.charges[selectedIdx].mass << std::endl;
                 }
                 if(event.key.code == sf::Keyboard::Delete){
                     sim.charges.erase(sim.charges.begin() + selectedIdx);
+                    updateElectricField = updatePotentialMap = true;
                     selectedIdx = -1;
                 }
             }
@@ -429,21 +437,24 @@ int main(){
                 // These keys work even if the screen is empty
                 if(event.key.code == sf::Keyboard::Space){
                     isSimRunning = !isSimRunning;
+                    updateElectricField = updatePotentialMap = true;
                 }
                 if(event.key.code == sf::Keyboard::Escape){
                     selectedIdx = -1;
                 }
                 if(event.key.code == sf::Keyboard::E){
-                    displayElectricField = true;
+                    displayElectricField = updateElectricField = true;
                     displayPotentialMap = false;
                 }
                 if(event.key.code == sf::Keyboard::P){
-                    displayPotentialMap = true;
+                    displayPotentialMap = updatePotentialMap = true;
                     displayElectricField = false;
                 }
+
                 if(event.key.code == sf::Keyboard::R){
                     selectedIdx = -1;
                     isSimRunning = false;
+                    updateElectricField = updatePotentialMap = true;
                     sim.charges.clear();
                     std::cout << "Simulation Cleared." << std::endl;
                 }
@@ -452,6 +463,8 @@ int main(){
         if(sf::Mouse::isButtonPressed(sf::Mouse::Left) && selectedIdx != -1 && !isSimRunning){
             sim.charges[selectedIdx].x = (float)mousePos.x;
             sim.charges[selectedIdx].y = (float)mousePos.y;
+            if(displayElectricField) updateElectricField = true;
+            if(displayPotentialMap) updatePotentialMap = true;
         }
 
 
@@ -459,9 +472,20 @@ int main(){
         //----RENDER----
         sim.window.clear(sf::Color::Black);
 
-        if(displayElectricField) updateFieldArrows(sim);
-        if(displayPotentialMap) updatePotentialMap(sim);
-        if(isSimRunning) updateCharges(sim);
+        if(updateElectricField){
+            updateFieldArrows(sim);
+            updateElectricField = false;
+        }
+        if(updatePotentialMap){
+            updatePotentialMapScreen(sim);
+            updatePotentialMap = false;
+        }
+        
+        if(isSimRunning){
+            updateCharges(sim);
+            if(displayElectricField) updateElectricField = true;
+            if(displayPotentialMap) updatePotentialMap = true;
+        }
 
         if(displayElectricField) drawFieldArrows(arrow_len, scale_factor, sim);
         if(displayPotentialMap) drawPotentialMap(sim);
@@ -473,6 +497,12 @@ int main(){
         }
 
         sim.window.display();
+
+        if(sim.charges.empty() && isSimRunning){
+            selectedIdx = -1;
+            isSimRunning = false;
+            std::cout << "All charges left the borders. Simulation Cleared." << std::endl;
+        }
     }
     return 0;
 }
