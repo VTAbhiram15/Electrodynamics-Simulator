@@ -6,7 +6,7 @@ A real-time, interactive physics sandbox built in C++ and SFML. Users can place,
 * **Interactive Sandbox**: Left-click to spawn and drag positive charges; Right-click for negative charges.
 * **Dual-Field Visualization**: 
     * **Vector Field**: Real-time electric field arrows scaled and colored dynamically by local intensity.
-    * **Scalar Field**: A high-resolution, smoothly interpolated potential map ($V = \frac{q}{r}$) featuring a non-linear gradient mapping from Crimson Red (+ve) through Slate Gray (neutral) to Cobalt Blue (-ve).
+    * **Scalar Field**: A high-resolution, smoothly interpolated potential map ($V = \frac{q}{r}$) featuring a non-linear gradient mapping from Crimson Red (+ve) through Slate Gray (neutral) to Cobalt Blue (-ve). Also includes Equipotential Lines with logarithmic scaling.
 * **Singularity Protection**: Built-in distance clamping to prevent mathematical division-by-zero crashes near charge centers.
 * **Physics Engine**: Calculates real-time electrostatic forces using $F = ma$ and supports particle collisions with energy damping.
 * **Dynamic Control**:
@@ -25,10 +25,12 @@ A real-time, interactive physics sandbox built in C++ and SFML. Users can place,
 1. Ensure SFML is installed on your system.
 2. Compile the source file using `g++`:
    ```bash
-   g++ Electrostat.cpp -o Electrostat -lsfml-graphics -lsfml-window -lsfml-system
+   g++ src/Electrostat.cpp -o Electrostat -lsfml-graphics -lsfml-window -lsfml-system
+   ```
 3. Run the executable from project root:
     ```bash
     ./bin/elec.exe
+    ```
 
 ## Controls Reference   
 | Key / Action | Function |
@@ -38,7 +40,7 @@ A real-time, interactive physics sandbox built in C++ and SFML. Users can place,
 | **Scroll Wheel** | Modify charge magnitude ($q$) |
 | **Spacebar** | Toggle simulation (Pause / Play) |
 | **E** |	Switch view to Electric Field Vector Grid
-| **P** |	Switch view to High-Res Potential Map Heatmap
+| **P** |	Switch view to Potential Map + Contour Lines
 | **M / N** | Increase / Decrease mass |
 | **Delete** | Remove selected charge |
 | **R** | Reset sandbox (Clear all charges) |

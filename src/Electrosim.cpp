@@ -4,21 +4,22 @@
 #include <cmath>
 #include <numbers>
 
+constexpr double PI = 3.1415926535;
+constexpr int ARROW_BLOCK_SIZE = 35;
+constexpr int MAP_BLOCK_SIZE = ARROW_BLOCK_SIZE/4;
+constexpr int CHARGE_RADIUS = 12.f;
+constexpr int CHARGE_RADIUS2 = (CHARGE_RADIUS * CHARGE_RADIUS); //squared CHARGE_RADIUS
+constexpr int MAX_ARROW_LEN = 10.f;
+constexpr float MAX_ARROW_BRIGHTNESS = 2.f;
+constexpr float MAX_POT_BRIGHTNESS = 40.f;
+
 sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
-#define PI 3.1415926535
-const int ARROW_BLOCK_SIZE = 35;
-const int MAP_BLOCK_SIZE = ARROW_BLOCK_SIZE/2;
 const int WIDTH = desktop.width;
 const int HEIGHT = desktop.height;
 const int ARROW_COLS = WIDTH/ARROW_BLOCK_SIZE;
 const int ARROW_ROWS = HEIGHT/ARROW_BLOCK_SIZE;
 const int MAP_COLS = WIDTH/MAP_BLOCK_SIZE;
 const int MAP_ROWS = HEIGHT/MAP_BLOCK_SIZE;
-const int CHARGE_RADIUS = 12.f;
-const int CHARGE_RADIUS2 = (CHARGE_RADIUS * CHARGE_RADIUS); //squared CHARGE_RADIUS
-const int MAX_ARROW_LEN = 10.f;
-const float MAX_ARROW_BRIGHTNESS = 2.f;
-const float MAX_POT_BRIGHTNESS = 40.f;
 
 typedef struct Charge{
     double q=0.f;
@@ -51,6 +52,8 @@ struct SimulationInit{
     std::vector<charge> charges;
     std::vector<arrow> FieldArrows;
     std::vector<potential> PotentialMap;
+    sf::VertexArray lines{sf::PrimitiveType::Lines};
+    std::vector<float> targetPotentials {-500, -200, -100, -50, -20, -10, -5, -2, -1, 0, 1, 2, 5, 10, 20, 50, 100, 200, 500};
 
     SimulationInit() :
         window(sf::VideoMode(WIDTH, HEIGHT), "Electrostatics", sf::Style::Default, sf::ContextSettings(0,0,0,3,1)),
@@ -63,21 +66,60 @@ struct SimulationInit{
         window.setFramerateLimit(60);
 
         mapBlock.setOrigin(WIDTH/(2*MAP_COLS), HEIGHT/(2*MAP_ROWS));
-
+        
         head.setPoint(0, sf::Vector2f(5.f, 0.f));   // The tip
         head.setPoint(1, sf::Vector2f(0.f, -3.f));  // Top back corner  
         head.setPoint(2, sf::Vector2f(0.f, 3.f));   // Bottom back corner
         head.setOrigin(0.f, 0.f);
-
+        
         ch.setOrigin(CHARGE_RADIUS, CHARGE_RADIUS);
         point.setOrigin(2.f, 2.f);
         point.setFillColor(sf::Color::White);
-
+        
         FieldArrows.resize(ARROW_ROWS*ARROW_COLS);
         PotentialMap.resize(MAP_ROWS*MAP_COLS);
     }
 };
 
+sf::Color getPotentialColor(const float total_V) {
+    // 1. Calculate the raw ratio and clamp it strictly between -1.0 and 1.0
+    float strength = total_V / MAX_POT_BRIGHTNESS;
+    strength = std::max(-1.0f, std::min(1.0f, strength));
+
+    // float sign = (ratio >= 0.0f) ? 1.0f : -1.0f;
+    // float strength = sign * (std::abs(ratio));
+
+    // Negative (#2535AA) -> Neutral (#4B4A4F) -> Positive (#C32727)
+    sf::Uint8 negR = 205,  negG = 120,  negB = 120;  // Cobalt Blue
+    sf::Uint8 neuR = 10,  neuG = 10,  neuB = 10;   // Dark Gray
+    sf::Uint8 posR = 120, posG = 120,  posB = 205;   // Crimson Red
+
+    sf::Uint8 finalR = neuR, finalG = neuG, finalB = neuB;
+
+    if (strength > 0.0f) {
+        // Positive Branch: Blend from Neutral (t=0) to Positive (t=1)
+        float t = (strength); 
+        finalR = neuR + static_cast<sf::Uint8>((posR - neuR) * t);
+        finalG = neuG + static_cast<sf::Uint8>((posG - neuG) * t);
+        finalB = neuB + static_cast<sf::Uint8>((posB - neuB) * t);
+    } 
+    else if (strength < 0.0f) {
+        // Negative Branch: Blend from Neutral (t=0) to Negative (t=1)
+        float t = std::abs(strength); 
+        finalR = neuR + static_cast<sf::Uint8>((negR - neuR) * t);
+        finalG = neuG + static_cast<sf::Uint8>((negG - neuG) * t);
+        finalB = neuB + static_cast<sf::Uint8>((negB - neuB) * t);
+    }
+
+    return sf::Color(finalR, finalG, finalB);
+}
+float getInterpolatedPos(float Va, float Vb, float Vt, float posA, float posB){
+    if(std::abs(Vb-Va) < 1e-5){
+        return posA;
+    }
+    float t = (Vt-Va)/(Vb-Va);
+    return posA + t*(posB-posA);
+}
 
 void drawCharges(SimulationInit& sim) {
     for(const auto& c: sim.charges){
@@ -145,38 +187,6 @@ void drawFieldArrows(float& arrow_len, float& scale_factor, SimulationInit& sim)
         }
     }
 }
-sf::Color getPotentialColor(const float total_V) {
-    // 1. Calculate the raw ratio and clamp it strictly between -1.0 and 1.0
-    float strength = total_V / MAX_POT_BRIGHTNESS;
-    strength = std::max(-1.0f, std::min(1.0f, strength));
-
-    // float sign = (ratio >= 0.0f) ? 1.0f : -1.0f;
-    // float strength = sign * (std::abs(ratio));
-
-    // Negative (#2535AA) -> Neutral (#4B4A4F) -> Positive (#C32727)
-    sf::Uint8 negR = 205,  negG = 120,  negB = 120;  // Cobalt Blue
-    sf::Uint8 neuR = 10,  neuG = 10,  neuB = 10;   // Dark Gray
-    sf::Uint8 posR = 120, posG = 120,  posB = 205;   // Crimson Red
-
-    sf::Uint8 finalR = neuR, finalG = neuG, finalB = neuB;
-
-    if (strength > 0.0f) {
-        // Positive Branch: Blend from Neutral (t=0) to Positive (t=1)
-        float t = (strength); 
-        finalR = neuR + static_cast<sf::Uint8>((posR - neuR) * t);
-        finalG = neuG + static_cast<sf::Uint8>((posG - neuG) * t);
-        finalB = neuB + static_cast<sf::Uint8>((posB - neuB) * t);
-    } 
-    else if (strength < 0.0f) {
-        // Negative Branch: Blend from Neutral (t=0) to Negative (t=1)
-        float t = std::abs(strength); 
-        finalR = neuR + static_cast<sf::Uint8>((negR - neuR) * t);
-        finalG = neuG + static_cast<sf::Uint8>((negG - neuG) * t);
-        finalB = neuB + static_cast<sf::Uint8>((negB - neuB) * t);
-    }
-
-    return sf::Color(finalR, finalG, finalB);
-}
 void drawPotentialMap(SimulationInit& sim){
     float x,  y, P;
     for(size_t i=0; i<MAP_ROWS; i++){
@@ -193,7 +203,169 @@ void drawPotentialMap(SimulationInit& sim){
         }
     }
 }
+void drawEquipotentialLines(SimulationInit& sim){
+    sim.window.draw(sim.lines);
+}
 
+void updateEquipotentialLinesScreen(SimulationInit& sim){
+    sim.lines.clear();
+    for(size_t i=0; i<MAP_ROWS-1; i++){
+        for(size_t j=0; j<MAP_COLS-1; j++){
+            float Vtl = sim.PotentialMap[i*MAP_COLS + j].P;
+            float Vtr = sim.PotentialMap[i*MAP_COLS + (j+1)].P;
+            float Vbr = sim.PotentialMap[(i+1)*MAP_COLS + (j+1)].P;
+            float Vbl = sim.PotentialMap[(i+1)*MAP_COLS + j].P;
+
+            float xl = j * MAP_BLOCK_SIZE + (MAP_BLOCK_SIZE / 2.f);
+            float xr = (j + 1) * MAP_BLOCK_SIZE + (MAP_BLOCK_SIZE / 2.f);
+            float yt = i * MAP_BLOCK_SIZE + (MAP_BLOCK_SIZE / 2.f);
+            float yb = (i + 1) * MAP_BLOCK_SIZE + (MAP_BLOCK_SIZE / 2.f);
+            
+            for(const auto& Vt: sim.targetPotentials){
+                sf::Color baseColor = getPotentialColor(Vt);
+                sf::Color equiPotentialLinesColor;
+                equiPotentialLinesColor.r = std::min(255, baseColor.r + 60);
+                equiPotentialLinesColor.g = std::min(255, baseColor.g + 60);
+                equiPotentialLinesColor.b = std::min(255, baseColor.b + 60);
+                equiPotentialLinesColor.a = 200;
+
+                uint8_t state = 0 & 0x0F;
+                if(Vtl >= Vt) state |= 8;
+                if(Vtr >= Vt) state |= 4;
+                if(Vbr >= Vt) state |= 2;
+                if(Vbl >= Vt) state |= 1;
+
+                switch(state){
+                    case 1:{
+                        float iY = getInterpolatedPos(Vtl, Vbl, Vt, yt, yb);
+                        float iX = getInterpolatedPos(Vbr, Vbl, Vt, xr, xl);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xl, iY), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iX, yb), equiPotentialLinesColor));
+                        break;
+                    }
+                    case 2:{
+                        float iY = getInterpolatedPos(Vtr, Vbr, Vt, yt, yb);
+                        float iX = getInterpolatedPos(Vbl, Vbr, Vt, xl, xr);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xr, iY), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iX, yb), equiPotentialLinesColor));
+                        break;
+                    }
+                    case 3:{
+                        float iYl = getInterpolatedPos(Vtl, Vbl, Vt, yt, yb);
+                        float iYr = getInterpolatedPos(Vtr, Vbr, Vt, yt, yb);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xl, iYl), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xr, iYr), equiPotentialLinesColor));
+                        break;
+                    }                        
+                    case 4:{
+                        float iX = getInterpolatedPos(Vtl, Vtr, Vt, xl, xr);
+                        float iY = getInterpolatedPos(Vbr, Vtr, Vt, yb, yt);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iX, yt), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xr, iY), equiPotentialLinesColor));
+                        break;
+                    }
+                    case 5:{
+                    // --- Bottom-Left Corner ---
+                        float iy_left = getInterpolatedPos(Vtl, Vbl, Vt, yt, yb);
+                        float ix_bottom = getInterpolatedPos(Vbl, Vbr, Vt, xl, xr);
+                        
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xl, iy_left), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(ix_bottom, yb), equiPotentialLinesColor));
+
+                        // --- Top-Right Corner ---
+                        float ix_top = getInterpolatedPos(Vtl, Vtr, Vt, xl, xr);
+                        float iy_right = getInterpolatedPos(Vtr, Vbr, Vt, yt, yb);
+                        
+                        sim.lines.append(sf::Vertex(sf::Vector2f(ix_top, yt), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xr, iy_right), equiPotentialLinesColor));
+                        break;
+                    }
+                    case 6: { 
+                        float iXt = getInterpolatedPos(Vtl, Vtr, Vt, xl, xr);
+                        float iXb = getInterpolatedPos(Vbl, Vbr, Vt, xl, xr);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iXt, yt), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iXb, yb), equiPotentialLinesColor));
+                        break;
+                    }
+
+                    case 7: { 
+                        float iX = getInterpolatedPos(Vtl, Vtr, Vt, xl, xr);
+                        float iY = getInterpolatedPos(Vtl, Vbl, Vt, yt, yb);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iX, yt), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xl, iY), equiPotentialLinesColor));
+                        break;
+                    }
+
+                    case 8: { 
+                        float iX = getInterpolatedPos(Vtl, Vtr, Vt, xl, xr);
+                        float iY = getInterpolatedPos(Vtl, Vbl, Vt, yt, yb);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iX, yt), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xl, iY), equiPotentialLinesColor));
+                        break;
+                    }
+
+                    case 9: { 
+                        float iXt = getInterpolatedPos(Vtl, Vtr, Vt, xl, xr);
+                        float iXb = getInterpolatedPos(Vbl, Vbr, Vt, xl, xr);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iXt, yt), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iXb, yb), equiPotentialLinesColor));
+                        break;
+                    }
+
+                    case 10: { 
+                        // Line 1: Top-Left isolation
+                        float ix_top = getInterpolatedPos(Vtl, Vtr, Vt, xl, xr);
+                        float iy_left = getInterpolatedPos(Vtl, Vbl, Vt, yt, yb);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(ix_top, yt), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xl, iy_left), equiPotentialLinesColor));
+
+                        // Line 2: Bottom-Right isolation
+                        float ix_bottom = getInterpolatedPos(Vbl, Vbr, Vt, xl, xr);
+                        float iy_right = getInterpolatedPos(Vtr, Vbr, Vt, yt, yb);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(ix_bottom, yb), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xr, iy_right), equiPotentialLinesColor));
+                        break;
+                    }
+
+                    case 11: {
+                        float iX = getInterpolatedPos(Vtl, Vtr, Vt, xl, xr);
+                        float iY = getInterpolatedPos(Vtr, Vbr, Vt, yt, yb);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iX, yt), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xr, iY), equiPotentialLinesColor));
+                        break;
+                    }
+
+                    case 12: { 
+                        float iYl = getInterpolatedPos(Vtl, Vbl, Vt, yt, yb);
+                        float iYr = getInterpolatedPos(Vtr, Vbr, Vt, yt, yb);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xl, iYl), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xr, iYr), equiPotentialLinesColor));
+                        break;
+                    }
+
+                    case 13: { 
+                        float iY = getInterpolatedPos(Vtr, Vbr, Vt, yt, yb);
+                        float iX = getInterpolatedPos(Vbl, Vbr, Vt, xl, xr);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xr, iY), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iX, yb), equiPotentialLinesColor));
+                        break;
+                    }
+
+                    case 14: { 
+                        float iY = getInterpolatedPos(Vtl, Vbl, Vt, yt, yb);
+                        float iX = getInterpolatedPos(Vbl, Vbr, Vt, xl, xr);
+                        sim.lines.append(sf::Vertex(sf::Vector2f(xl, iY), equiPotentialLinesColor));
+                        sim.lines.append(sf::Vertex(sf::Vector2f(iX, yb), equiPotentialLinesColor));
+                        break;
+                    }
+                    default:
+                        // cases for 0(all below target) and 15(all above target)
+                        break;
+                }
+            }
+        }
+    }
+}
 void updateCharges(SimulationInit& sim){
     // SL = 0.01;
     // SE = 1e5;
@@ -337,9 +509,11 @@ int main(){
     bool isSimRunning = false;
     bool updateElectricField = true;
     bool updatePotentialMap = false;
+    bool updateEquipotentialLines = updatePotentialMap;
     bool displayElectricField = true;
     bool displayPotentialMap = false;
-    
+    bool displayEquipotentialLines = displayPotentialMap;
+
     while(sim.window.isOpen()){
         sf::Vector2i mousePos = sf::Mouse::getPosition(sim.window);
         sf::Event event;
@@ -402,7 +576,7 @@ int main(){
                 }
 
             }
-            if(event.type == sf::Event::MouseWheelScrolled && selectedIdx != -1){
+            if(event.type == sf::Event::MouseWheelScrolled && selectedIdx != -1 && !isSimRunning){
                 if(event.mouseWheelScroll.wheel == sf::Mouse::VerticalWheel){
                     float delta = event.mouseWheelScroll.delta;
                     if(delta > 0.f){
@@ -437,6 +611,7 @@ int main(){
                 // These keys work even if the screen is empty
                 if(event.key.code == sf::Keyboard::Space){
                     isSimRunning = !isSimRunning;
+                    selectedIdx = -1;
                     updateElectricField = updatePotentialMap = true;
                 }
                 if(event.key.code == sf::Keyboard::Escape){
@@ -467,35 +642,47 @@ int main(){
             if(displayPotentialMap) updatePotentialMap = true;
         }
 
-
+        displayEquipotentialLines = displayPotentialMap;
+        updateEquipotentialLines = updatePotentialMap;
 
         //----RENDER----
+
+        //clear
         sim.window.clear(sf::Color::Black);
 
+        //update
         if(updateElectricField){
             updateFieldArrows(sim);
             updateElectricField = false;
         }
-        if(updatePotentialMap){
+        if(updatePotentialMap || updateEquipotentialLines){
             updatePotentialMapScreen(sim);
             updatePotentialMap = false;
         }
-        
+        if(updateEquipotentialLines){
+            updateEquipotentialLinesScreen(sim);
+            updateEquipotentialLines = false;
+        } 
         if(isSimRunning){
             updateCharges(sim);
             if(displayElectricField) updateElectricField = true;
             if(displayPotentialMap) updatePotentialMap = true;
+            if(displayEquipotentialLines) updateEquipotentialLines = true;
         }
 
+        //draw
         if(displayElectricField) drawFieldArrows(arrow_len, scale_factor, sim);
         if(displayPotentialMap) drawPotentialMap(sim);
-        
-        drawCharges(sim);
+        if(displayEquipotentialLines){
+            drawEquipotentialLines(sim);
+        }
+            drawCharges(sim);
         if(!isSimRunning && selectedIdx != -1){
             sim.point.setPosition(sim.charges[selectedIdx].x, sim.charges[selectedIdx].y);
             sim.window.draw(sim.point);
         }
 
+        //display
         sim.window.display();
 
         if(sim.charges.empty() && isSimRunning){
