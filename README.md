@@ -21,16 +21,23 @@ A real-time, interactive physics sandbox built in C++ and SFML. Users can place,
 * [SFML (Simple and Fast Multimedia Library)](https://www.sfml-dev.org/)
 * A C++17 compatible compiler (or later).
 
-## How to Compile & Run
-1. Ensure SFML is installed on your system.
-2. Compile the source file using `g++`:
-   ```bash
-   g++ src/Electrostat.cpp -o Electrostat -lsfml-graphics -lsfml-window -lsfml-system
-   ```
-3. Run the executable from project root:
-    ```bash
-    ./bin/elec.exe
-    ```
+# How to Compile & Run
+## Prerequisites
+* A C++ compiler supporting C++20 and OpenMP (genuine GCC recommended).
+
+* SFML (Simple and Fast Multimedia Library) installed on your local environment.
+
+* ⚠️ Crucial Configuration Note: Before running the build scripts for the first time, open Electrosim.bat (Windows) in a text editor and update the paths at the top (SFML_INC and SFML_LIB) to point to the exact directories where SFML is installed on your machine. Ensure there are no trailing backslashes inside the quoted paths on Windows.
+
+## Windows
+1. Launch your terminal and ensure you are sitting in the project root directory (Electrostatics Simulation).
+
+2. Execute the batch utility shortcut:
+```bash
+    .\Electrosim.bat
+```
+3. The script will then automatically compile and run the source code.
+
 
 ## Controls Reference   
 | Key / Action | Function |

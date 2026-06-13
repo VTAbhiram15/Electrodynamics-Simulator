@@ -3,10 +3,13 @@
 #include <vector>
 #include <cmath>
 #include <numbers>
+#include <omp.h>
+#include <algorithm>
+#include <chrono>
 
 constexpr double PI = 3.1415926535;
-constexpr int ARROW_BLOCK_SIZE = 35;
-constexpr int MAP_BLOCK_SIZE = ARROW_BLOCK_SIZE/4;
+constexpr int ARROW_BLOCK_SIZE = 20;
+constexpr int MAP_BLOCK_SIZE = ARROW_BLOCK_SIZE/8;
 constexpr int CHARGE_RADIUS = 12.f;
 constexpr int CHARGE_RADIUS2 = (CHARGE_RADIUS * CHARGE_RADIUS); //squared CHARGE_RADIUS
 constexpr int MAX_ARROW_LEN = 10.f;
@@ -43,16 +46,16 @@ typedef struct pot{
 
 //INITIALIZING ALL VECTORS, SHAPES AND THE WINDOW
 struct SimulationInit{
-    sf::RenderWindow window;
-    sf::RectangleShape stem;
-    sf::ConvexShape head;
-    sf::RectangleShape mapBlock;
-    sf::CircleShape ch;
-    sf::CircleShape point;
-    std::vector<charge> charges;
-    std::vector<arrow> FieldArrows;
-    std::vector<potential> PotentialMap;
-    sf::VertexArray lines{sf::PrimitiveType::Lines};
+    sf::RenderWindow window; //window
+    sf::RectangleShape stem; // arrow body
+    sf::ConvexShape head; //arrow head
+    sf::CircleShape ch; //charge
+    sf::CircleShape point; // selected indicator
+    std::vector<charge> charges; // Charges on screen
+    std::vector<arrow> FieldArrows; // Electric Field arrows
+    std::vector<potential> PotentialMap; // Electric Potential Map
+    sf::VertexArray lines{sf::PrimitiveType::Lines}; // Equipotential lines
+    sf::VertexArray mapVertices{sf::Quads, (size_t)MAP_ROWS*MAP_COLS*4};
     std::vector<float> targetPotentials {-500, -200, -100, -50, -20, -10, -5, -2, -1, 0, 1, 2, 5, 10, 20, 50, 100, 200, 500};
 
     SimulationInit() :
@@ -60,12 +63,9 @@ struct SimulationInit{
         stem(sf::Vector2f(16.f, 2.f)),
         head(3),
         ch(CHARGE_RADIUS),
-        point(2.f),
-        mapBlock(sf::Vector2f((WIDTH*1.f/MAP_COLS), (HEIGHT*1.f/MAP_ROWS)))
+        point(2.f)
     {
         window.setFramerateLimit(60);
-
-        mapBlock.setOrigin(WIDTH/(2*MAP_COLS), HEIGHT/(2*MAP_ROWS));
         
         head.setPoint(0, sf::Vector2f(5.f, 0.f));   // The tip
         head.setPoint(1, sf::Vector2f(0.f, -3.f));  // Top back corner  
@@ -83,11 +83,7 @@ struct SimulationInit{
 
 sf::Color getPotentialColor(const float total_V) {
     // 1. Calculate the raw ratio and clamp it strictly between -1.0 and 1.0
-    float strength = total_V / MAX_POT_BRIGHTNESS;
-    strength = std::max(-1.0f, std::min(1.0f, strength));
-
-    // float sign = (ratio >= 0.0f) ? 1.0f : -1.0f;
-    // float strength = sign * (std::abs(ratio));
+    float strength = std::clamp(total_V/MAX_POT_BRIGHTNESS, -1.0f, 1.0f);
 
     // Negative (#2535AA) -> Neutral (#4B4A4F) -> Positive (#C32727)
     sf::Uint8 negR = 205,  negG = 120,  negB = 120;  // Cobalt Blue
@@ -167,8 +163,8 @@ void drawFieldArrows(float& arrow_len, float& scale_factor, SimulationInit& sim)
             else{
                 float t = (strength - 0.1f)/0.9f;
                 r = static_cast<sf::Uint8>(0 + (t * (237)));
-                g = static_cast<sf::Uint8>(255 + (t * (-214)));
-                b = static_cast<sf::Uint8>(117 + (t * (-61)));
+                g = static_cast<sf::Uint8>(215 + (t * (-214)));
+                b = static_cast<sf::Uint8>(100 + (t * (-61)));
             }
             sim.stem.setPosition(sim.FieldArrows[index].x, sim.FieldArrows[index].y);
             sim.stem.setSize(sf::Vector2f(arrow_len, 2.f));
@@ -188,20 +184,21 @@ void drawFieldArrows(float& arrow_len, float& scale_factor, SimulationInit& sim)
     }
 }
 void drawPotentialMap(SimulationInit& sim){
-    float x,  y, P;
     for(size_t i=0; i<MAP_ROWS; i++){
         for(size_t j=0; j<MAP_COLS; j++){
-            int index = i*MAP_COLS + j;
-            x = sim.PotentialMap[index].x;
-            y = sim.PotentialMap[index].y;
-            P = sim.PotentialMap[index].P;
+            int index = (i*MAP_COLS + j)*4;
+            float x = j * MAP_BLOCK_SIZE;
+            float y = i * MAP_BLOCK_SIZE;
+            float P = sim.PotentialMap[index/4].P;
             sf::Color blockColor = getPotentialColor(P);
 
-            sim.mapBlock.setPosition(x, y);
-            sim.mapBlock.setFillColor(blockColor);
-            sim.window.draw(sim.mapBlock);
+            sim.mapVertices[index] = sf::Vertex(sf::Vector2f(x, y), blockColor);
+            sim.mapVertices[index+1] = sf::Vertex(sf::Vector2f(x+MAP_BLOCK_SIZE, y), blockColor);
+            sim.mapVertices[index+2] = sf::Vertex(sf::Vector2f(x+MAP_BLOCK_SIZE, y+MAP_BLOCK_SIZE), blockColor);
+            sim.mapVertices[index+3] = sf::Vertex(sf::Vector2f(x, y+MAP_BLOCK_SIZE), blockColor);
         }
     }
+    sim.window.draw(sim.mapVertices);
 }
 void drawEquipotentialLines(SimulationInit& sim){
     sim.window.draw(sim.lines);
@@ -374,11 +371,11 @@ void updateCharges(SimulationInit& sim){
 
     size_t size = sim.charges.size();
     const double K = 1.1123471e-9;
-    for(auto& c: sim.charges){
-        c.ax = 0;
-        c.ay = 0;
+    std::ranges::for_each(sim.charges, [K](charge& c) {
+        c.ax = 0.f;
+        c.ay = 0.f;
         c.q_real = K * c.q;
-    }
+    });
 
     float Fx = 0;
     float Fy = 0;
@@ -427,7 +424,7 @@ void updateCharges(SimulationInit& sim){
         }
     }
 
-    float dt = 0.1f;
+    float dt = 0.05f;
     for(auto& c: sim.charges){
         c.vx += c.ax * dt;
         c.vy += c.ay * dt;
@@ -441,11 +438,12 @@ void updateCharges(SimulationInit& sim){
     std::erase_if(sim.charges, [](const charge& c) {
         bool k = (c.x < -2000 || c.x > WIDTH+2000) ||
                  (c.y < -2000 || c.y > HEIGHT+2000);
-        if(k){ e++; std::cout << "Erased " << e << " charges" << std::endl; }
+        if(k){ e++; std::cout << "Erased " << e << " charges" << '\n'; }
         return k;
     });
 }
 void updateFieldArrows(SimulationInit& sim){
+    #pragma omp parallel for collapse(2)
     for(int i=0; i<ARROW_ROWS; i++){
         for(int j=0; j<ARROW_COLS; j++){
             int index = i*ARROW_COLS + j;
@@ -463,7 +461,7 @@ void updateFieldArrows(SimulationInit& sim){
                 if(r<=CHARGE_RADIUS){
                     r = CHARGE_RADIUS;
                 }
-                float E = (c.q)/r2;
+                float E = (c.q)/(r * r);
                 total_Ex += E * (dx/r);
                 total_Ey += E * (dy/r);
             }
@@ -478,6 +476,7 @@ void updateFieldArrows(SimulationInit& sim){
     }
 }
 void updatePotentialMapScreen(SimulationInit& sim){
+    #pragma omp parallel for collapse(2)
     for(size_t i=0; i<MAP_ROWS; i++){
         for(size_t j=0; j<MAP_COLS; j++){
             int index = i*MAP_COLS + j;
@@ -498,6 +497,7 @@ void updatePotentialMapScreen(SimulationInit& sim){
             sim.PotentialMap[index].P = total_P;
         }
     }
+
 }
 
 int main(){
@@ -592,13 +592,12 @@ int main(){
                 if(event.key.code == sf::Keyboard::M){
                     sim.charges[selectedIdx].mass += 2.f;
                     updateElectricField = updatePotentialMap = true;
-                    std::cout << "mass = " << sim.charges[selectedIdx].mass << std::endl;            
+                    std::cout << "mass = " << sim.charges[selectedIdx].mass << '\n';            
                 }
                 if(event.key.code == sf::Keyboard::N){
-                    if(sim.charges[selectedIdx].mass > 0) sim.charges[selectedIdx].mass -= 2.f;
-                    else if(sim.charges[selectedIdx].mass <=0) sim.charges[selectedIdx].mass = 0.f;
+                    if(sim.charges[selectedIdx].mass > 2.0f) sim.charges[selectedIdx].mass -= 2.f;
                     updateElectricField = updatePotentialMap = true;
-                    std::cout << "mass = " << sim.charges[selectedIdx].mass << std::endl;
+                    std::cout << "mass = " << sim.charges[selectedIdx].mass << '\n';
                 }
                 if(event.key.code == sf::Keyboard::Delete){
                     sim.charges.erase(sim.charges.begin() + selectedIdx);
@@ -631,7 +630,7 @@ int main(){
                     isSimRunning = false;
                     updateElectricField = updatePotentialMap = true;
                     sim.charges.clear();
-                    std::cout << "Simulation Cleared." << std::endl;
+                    std::cout << "Simulation Cleared." << '\n';
                 }
             }
         }
@@ -688,7 +687,7 @@ int main(){
         if(sim.charges.empty() && isSimRunning){
             selectedIdx = -1;
             isSimRunning = false;
-            std::cout << "All charges left the borders. Simulation Cleared." << std::endl;
+            std::cout << "All charges left the borders. Simulation Cleared." << '\n';
         }
     }
     return 0;
